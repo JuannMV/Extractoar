@@ -82,7 +82,17 @@ tfoot td{font-weight:700;border-top:2px solid var(--verde);border-bottom:0;color
     <textarea id="mensaje" class="corto">Acá está el extracto de pagos que debías recibir. Si notás alguna discrepancia, brindanos aviso para revisarlo.</textarea>
     <div style="height:12px"></div>
     <label for="texto">Lista de pagos</label>
-    <textarea id="texto" placeholder="Pago 1 de 67&#10;correo@ejemplo.com&#10;6.02&#10;USD&#10;(&#10;5.39&#10;USD&#10;)&#10;…"></textarea>
+    <textarea id="texto" placeholder="Pegá acá la pantalla de pagos (“Pago 1 de 67…”) o el correo de Saldoar (“* 227.00 USD de correo@… : Sí lo recibí”)."></textarea>
+    <div id="comisionBox" class="campos hidden" style="margin-top:12px">
+      <div>
+        <label for="pct">Comisión PayPal (%)</label>
+        <input type="text" id="pct" value="5,4" inputmode="decimal">
+      </div>
+      <div>
+        <label for="fee">Fee fijo por pago (USD)</label>
+        <input type="text" id="fee" value="0,30" inputmode="decimal">
+      </div>
+    </div>
     <div class="row">
       <button class="primary" id="btnExcel" disabled>Descargar Excel</button>
       <button class="ghost" id="btnLimpiar">Limpiar</button>
@@ -106,7 +116,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--verde);border-bottom:0;color
     </div>
   </div>
 
-  <p class="foot">Lee bloques con el formato “Pago X de N · correo · bruto USD · (neto USD)”. Si la cantidad encontrada no coincide con N, avisa.</p>
+  <p class="foot">Lee dos formatos: la pantalla de pagos (“Pago X de N · correo · bruto · (neto)”), donde controla que estén los N pagos, y el correo de Saldoar (“227.00 USD de correo : Sí lo recibí”), donde el neto se calcula con la comisión de PayPal indicada.</p>
 </div>
 
 <script>
@@ -120,13 +130,30 @@ function aNumero(s){
 }
 
 function leerPagos(texto){
+  // Formato 1: pantalla de pagos ("Pago X de N", correo, bruto, (neto))
   const re = /Pago\s+(\d+)\s+de\s+(\d+)\s+(\S+@\S+)\s+([\d][\d.,\s  ]*?)\s*USD\s*\(\s*([\d][\d.,\s  ]*?)\s*USD\s*\)/gi;
   const pagos = []; let total = null, m;
   while ((m = re.exec(texto)) !== null){
     total = parseInt(m[2], 10);
     pagos.push({ nro: parseInt(m[1], 10), email: m[3], bruto: aNumero(m[4]), neto: aNumero(m[5]) });
   }
-  return { pagos, total };
+  if (pagos.length) return { formato: "pantalla", pagos, total };
+
+  // Formato 2: correo de Saldoar ("* **227.00 USD** de correo@… : Sí lo recibí…")
+  const re2 = /([\d][\d.,   ]*?)\s*USD\s*\**\s*de\s+([^\s:]+@[^\s:]+?)\s*:\s*([^\n]*)/gi;
+  const linea = [];
+  while ((m = re2.exec(texto)) !== null){
+    linea.push({ nro: linea.length + 1, email: m[2], bruto: aNumero(m[1]), pendiente: /pendiente/i.test(m[3]) });
+  }
+  if (!linea.length) return { formato: null, pagos: [], total: null };
+  const ped = texto.match(/transactions\/(\d{6,})\//) || texto.match(/\/[0-9a-f]{40}\/(\d{6,})\//);
+  const monto = texto.match(/Tu pedido:\s*\**\s*([\d][\d.,]*)\s*USD/i);
+  return { formato: "correo", pagos: linea, total: null, pedido: ped ? ped[1] : "", montoPedido: monto ? aNumero(monto[1]) : null };
+}
+
+function leerDecimal(id, def){
+  const v = parseFloat(String($(id).value).replace(",", "."));
+  return isFinite(v) && v >= 0 ? v : def;
 }
 
 // ---------- Formato ----------
@@ -135,20 +162,46 @@ const suma = (arr, k) => Math.round(arr.reduce((a, p) => a + p[k], 0) * 100) / 1
 const $ = id => document.getElementById(id);
 
 let actual = [];
+let info = {};
 
 function procesar(){
   const texto = $("texto").value;
-  const { pagos, total } = leerPagos(texto);
-  actual = pagos;
+  const lectura = leerPagos(texto);
+  const { pagos, total, formato } = lectura;
+  info = lectura;
   const msgs = [];
+  $("comisionBox").classList.toggle("hidden", formato !== "correo");
+  if (formato === "correo"){
+    // Igual que PayPal: comisión = bruto × % + fijo, redondeada al centavo; neto = bruto − comisión.
+    // Se calcula en centavos enteros para evitar errores de redondeo.
+    const pct = leerDecimal("pct", 5.4), feeC = Math.round(leerDecimal("fee", 0.30) * 100);
+    pagos.forEach(p => {
+      const c = Math.round(p.bruto * 100);
+      const comision = Math.round(c * pct / 100 + feeC + 1e-6);
+      p.neto = (c - comision) / 100;
+    });
+    if (lectura.pedido && (!$("pedido").value.trim() || $("pedido").dataset.auto === "1")){
+      $("pedido").value = lectura.pedido; $("pedido").dataset.auto = "1";
+    }
+  }
+  actual = pagos;
 
   if (!texto.trim()){
     $("resultado").classList.add("hidden"); $("mensajes").innerHTML = ""; $("btnExcel").disabled = true; return;
   }
   if (pagos.length === 0){
-    msgs.push(["err", "No encontré pagos en el texto. Revisá que hayas copiado la lista completa, incluyendo las líneas “Pago X de N”."]);
+    msgs.push(["err", "No encontré pagos en el texto. Pegá la pantalla de pagos completa (con las líneas “Pago X de N”) o el correo de Saldoar (con las líneas “… USD de correo@…”)."]);
   } else {
-    if (pagos.length !== total){
+    if (formato === "correo"){
+      const pend = pagos.filter(p => p.pendiente).length;
+      msgs.push(["ok", `Se leyeron ${pagos.length} pagos del correo de Saldoar. El neto se calcula con ${$("pct").value.trim() || "5,4"} % + USD ${$("fee").value.trim() || "0,30"} por pago.`]);
+      if (pend) msgs.push(["warn", `${pend > 1 ? pend + " pagos figuraban" : "1 pago figuraba"} como “pendiente, resolución en progreso” y ${pend > 1 ? "se incluyeron" : "se incluyó"} en el total.`]);
+      if (lectura.montoPedido != null){
+        const b = suma(pagos, "bruto");
+        const d = Math.round((b - lectura.montoPedido) * 100) / 100;
+        if (Math.abs(d) >= 0.01) msgs.push(["warn", `El correo dice “Tu pedido: ${fmt(lectura.montoPedido)} USD” y los pagos suman ${fmt(b)} de bruto (diferencia: ${d > 0 ? "+" : ""}${fmt(d)}).`]);
+      }
+    } else if (pagos.length !== total){
       const vistos = new Set(pagos.map(p => p.nro));
       const faltan = [];
       for (let i = 1; i <= total; i++) if (!vistos.has(i)) faltan.push(i);
@@ -161,7 +214,7 @@ function procesar(){
     const cuenta = {};
     pagos.forEach(p => cuenta[p.email.toLowerCase()] = (cuenta[p.email.toLowerCase()] || 0) + 1);
     const dups = Object.keys(cuenta).filter(e => cuenta[e] > 1);
-    if (dups.length) msgs.push(["warn", "Emisores que aparecen más de una vez (resaltados): " + dups.join(", ") + "."]);
+    if (dups.length) msgs.push(["warn", `${dups.length} emisor${dups.length > 1 ? "es aparecen" : " aparece"} más de una vez (resaltados): ` + dups.slice(0, 8).join(", ") + (dups.length > 8 ? ` y ${dups.length - 8} más` : "") + "."]);
   }
 
   $("mensajes").innerHTML = msgs.map(([t, s]) => `<div class="msg ${t}">${s.replace(/</g, "&lt;")}</div>`).join("");
@@ -259,6 +312,12 @@ async function descargarExcel(){
     if (f) ws.getCell(r, 3).numFmt = f;
   });
 
+  if (info.formato === "correo"){
+    const r = tr + 2 + res.length + 1;
+    ws.getCell(r, 2).value = `Neto calculado sobre cada pago: bruto − ${$("pct").value.trim()} % − USD ${$("fee").value.trim()} (comisión de PayPal).`;
+    ws.getCell(r, 2).font = F({ italic: true, color: { argb: "FF808080" } });
+  }
+
   ws.pageSetup = { fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: `${H}:${H}` };
 
   const buf = await wb.xlsx.writeBuffer();
@@ -275,8 +334,15 @@ async function descargarExcel(){
 }
 
 $("texto").addEventListener("input", procesar);
+$("pct").addEventListener("input", procesar);
+$("fee").addEventListener("input", procesar);
+$("pedido").addEventListener("input", () => { $("pedido").dataset.auto = ""; });
 $("btnExcel").addEventListener("click", descargarExcel);
-$("btnLimpiar").addEventListener("click", () => { $("texto").value = ""; procesar(); $("texto").focus(); });
+$("btnLimpiar").addEventListener("click", () => {
+  $("texto").value = "";
+  if ($("pedido").dataset.auto === "1"){ $("pedido").value = ""; $("pedido").dataset.auto = ""; }
+  procesar(); $("texto").focus();
+});
 </script>
 </body>
 </html>
