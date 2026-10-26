@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Extractoar</title>
+<meta name="color-scheme" content="only light">
+<meta name="theme-color" content="#4CDFB0">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+:root{
+  /* Colores de Saldoar */
+  --menta:#4CDFB0; --menta-claro:#B2F1DD; --menta-suave:#F2F8F6; --verde:#006E53;
+  --bg:#F6F6F6; --card:#ffffff; --ink:#2B2B2B; --muted:#6b6b6b; --line:#E5ECE9;
+  --ok:#006E53; --ok-bg:#E3F8F0;
+  --warn:#8a5a14; --warn-bg:#FDF1E1; --err:#b3261e; --err-bg:#fdecea;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+.topbar{background:var(--card);border-bottom:2px solid var(--menta)}
+.topbar .in{max-width:960px;margin:0 auto;padding:14px 16px;display:flex;align-items:center;gap:10px}
+.dot{width:14px;height:14px;border-radius:50%;background:var(--menta);box-shadow:0 0 0 5px var(--menta-claro);flex:none;margin:0 4px}
+.brand{font-size:22px;font-weight:800;letter-spacing:-.3px;color:var(--verde)}
+.brand span{color:var(--menta)}
+.wrap{max-width:960px;margin:0 auto;padding:24px 16px 60px}
+.sub{color:var(--muted);margin:0 0 18px}
+.card{background:var(--card);border:1.5px solid var(--menta);border-radius:10px;padding:16px;margin-bottom:16px}
+label{display:block;font-weight:600;margin-bottom:6px;color:var(--verde)}
+input[type=text]{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:inherit}
+textarea{width:100%;min-height:180px;padding:10px;border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--ink);font:13px/1.4 ui-monospace,Consolas,monospace;resize:vertical}
+input[type=text]:focus,textarea:focus{outline:none;border-color:var(--menta);box-shadow:0 0 0 3px var(--menta-claro)}
+textarea.corto{min-height:64px;font:inherit}
+.hint{font-weight:400;color:var(--muted);font-size:13px}
+.campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+button{border-radius:8px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer}
+.primary{background:var(--menta);color:var(--verde);border:1.5px solid var(--menta)}
+.primary:hover:not(:disabled){filter:brightness(.95)}
+.ghost{background:var(--card);color:var(--verde);border:1.5px solid var(--verde)}
+.ghost:hover{background:var(--menta-suave)}
+button:disabled{opacity:.45;cursor:not-allowed}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--card);border:1.5px solid var(--menta);border-radius:10px;padding:12px 14px}
+.stat .k{color:var(--muted);font-size:13px}
+.stat .v{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--verde)}
+.msg{border-radius:8px;padding:10px 12px;margin:8px 0 0}
+.msg.ok{background:var(--ok-bg);color:var(--ok)}
+.msg.warn{background:var(--warn-bg);color:var(--warn)}
+.msg.err{background:var(--err-bg);color:var(--err)}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{background:var(--verde);color:#fff;text-align:left;padding:8px 10px;font-size:13px;white-space:nowrap}
+td{padding:7px 10px;border-bottom:1px solid var(--line);font-size:14px}
+td.n,th.n{text-align:right}
+td.c{text-align:center;color:var(--muted)}
+td.email{word-break:break-all}
+tr.dup td{background:var(--warn-bg)}
+tbody tr:hover td{background:var(--menta-suave)}
+tfoot td{font-weight:700;border-top:2px solid var(--verde);border-bottom:0;color:var(--verde)}
+.hidden{display:none}
+.foot{color:var(--muted);font-size:13px;margin-top:20px}
+</style>
+</head>
+<body>
+<header class="topbar"><div class="in"><span class="dot"></span><span class="brand">Extracto<span>ar</span></span></div></header>
+<div class="wrap">
+  <p class="sub">Pegá la lista de pagos tal cual la copiás. Todo se procesa en tu navegador: los datos no se envían a ningún lado.</p>
+
+  <div class="card">
+    <div class="campos">
+      <div>
+        <label for="pedido">Número de pedido</label>
+        <input type="text" id="pedido" placeholder="Ej.: 205686519">
+      </div>
+      <div>
+        <label for="cliente">Nombre del cliente</label>
+        <input type="text" id="cliente" placeholder="Ej.: Diego">
+      </div>
+    </div>
+    <div style="height:12px"></div>
+    <label for="mensaje">Mensaje para el cliente <span class="hint">(va en el Excel después de “¡Hola Diego!”)</span></label>
+    <textarea id="mensaje" class="corto">Acá está el extracto de pagos que debías recibir. Si notás alguna discrepancia, brindanos aviso para revisarlo.</textarea>
+    <div style="height:12px"></div>
+    <label for="texto">Lista de pagos</label>
+    <textarea id="texto" placeholder="Pago 1 de 67&#10;correo@ejemplo.com&#10;6.02&#10;USD&#10;(&#10;5.39&#10;USD&#10;)&#10;…"></textarea>
+    <div class="row">
+      <button class="primary" id="btnExcel" disabled>Descargar Excel</button>
+      <button class="ghost" id="btnLimpiar">Limpiar</button>
+    </div>
+    <div id="mensajes"></div>
+  </div>
+
+  <div id="resultado" class="hidden">
+    <div class="stats">
+      <div class="stat"><div class="k">Cantidad de pagos</div><div class="v" id="sCant">0</div></div>
+      <div class="stat"><div class="k">Neto (USD)</div><div class="v" id="sNeto">0,00</div></div>
+      <div class="stat"><div class="k">Bruto (USD)</div><div class="v" id="sBruto">0,00</div></div>
+      <div class="stat"><div class="k">Comisiones (USD)</div><div class="v" id="sCom">0,00</div></div>
+    </div>
+    <div class="card tablewrap" style="margin-top:16px;padding:0">
+      <table>
+        <thead><tr><th class="n">N°</th><th>Correo del emisor</th><th class="n">Neto (USD)</th><th class="n">Bruto (USD)</th></tr></thead>
+        <tbody id="tbody"></tbody>
+        <tfoot><tr><td></td><td>TOTAL</td><td class="n" id="tNeto"></td><td class="n" id="tBruto"></td></tr></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <p class="foot">Lee bloques con el formato “Pago X de N · correo · bruto USD · (neto USD)”. Si la cantidad encontrada no coincide con N, avisa.</p>
+</div>
+
+<script>
+// ---------- Lectura de la lista ----------
+function aNumero(s){
+  s = s.replace(/[\s  ]/g, "");
+  if (s.includes(",") && s.includes(".")) s = s.replace(/,/g, "");
+  else if (/,\d{1,2}$/.test(s)) s = s.replace(",", ".");
+  else s = s.replace(/,/g, "");
+  return Math.round(parseFloat(s) * 100) / 100;
+}
+
+function leerPagos(texto){
+  const re = /Pago\s+(\d+)\s+de\s+(\d+)\s+(\S+@\S+)\s+([\d][\d.,\s  ]*?)\s*USD\s*\(\s*([\d][\d.,\s  ]*?)\s*USD\s*\)/gi;
+  const pagos = []; let total = null, m;
+  while ((m = re.exec(texto)) !== null){
+    total = parseInt(m[2], 10);
+    pagos.push({ nro: parseInt(m[1], 10), email: m[3], bruto: aNumero(m[4]), neto: aNumero(m[5]) });
+  }
+  return { pagos, total };
+}
+
+// ---------- Formato ----------
+const fmt = n => n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const suma = (arr, k) => Math.round(arr.reduce((a, p) => a + p[k], 0) * 100) / 100;
+const $ = id => document.getElementById(id);
+
+let actual = [];
+
+function procesar(){
+  const texto = $("texto").value;
+  const { pagos, total } = leerPagos(texto);
+  actual = pagos;
+  const msgs = [];
+
+  if (!texto.trim()){
+    $("resultado").classList.add("hidden"); $("mensajes").innerHTML = ""; $("btnExcel").disabled = true; return;
+  }
+  if (pagos.length === 0){
+    msgs.push(["err", "No encontré pagos en el texto. Revisá que hayas copiado la lista completa, incluyendo las líneas “Pago X de N”."]);
+  } else {
+    if (pagos.length !== total){
+      const vistos = new Set(pagos.map(p => p.nro));
+      const faltan = [];
+      for (let i = 1; i <= total; i++) if (!vistos.has(i)) faltan.push(i);
+      msgs.push(["err", `La lista dice ${total} pagos pero encontré ${pagos.length}.` + (faltan.length ? ` Faltan: ${faltan.slice(0, 20).join(", ")}${faltan.length > 20 ? "…" : ""}.` : "") + " Revisá que se haya copiado todo."]);
+    } else {
+      msgs.push(["ok", `Se leyeron los ${total} pagos de la lista.`]);
+    }
+    const raros = pagos.filter(p => !(p.neto > 0) || !(p.bruto > 0) || p.neto > p.bruto);
+    if (raros.length) msgs.push(["err", "Montos sospechosos (neto mayor que bruto o vacío) en el pago " + raros.map(p => p.nro).join(", ") + "."]);
+    const cuenta = {};
+    pagos.forEach(p => cuenta[p.email.toLowerCase()] = (cuenta[p.email.toLowerCase()] || 0) + 1);
+    const dups = Object.keys(cuenta).filter(e => cuenta[e] > 1);
+    if (dups.length) msgs.push(["warn", "Emisores que aparecen más de una vez (resaltados): " + dups.join(", ") + "."]);
+  }
+
+  $("mensajes").innerHTML = msgs.map(([t, s]) => `<div class="msg ${t}">${s.replace(/</g, "&lt;")}</div>`).join("");
+
+  const cuenta = {};
+  pagos.forEach(p => cuenta[p.email.toLowerCase()] = (cuenta[p.email.toLowerCase()] || 0) + 1);
+  $("tbody").innerHTML = pagos.map((p, i) =>
+    `<tr class="${cuenta[p.email.toLowerCase()] > 1 ? "dup" : ""}"><td class="c">${i + 1}</td><td class="email">${p.email.replace(/</g, "&lt;")}</td><td class="n">${fmt(p.neto)}</td><td class="n">${fmt(p.bruto)}</td></tr>`
+  ).join("");
+
+  const neto = suma(pagos, "neto"), bruto = suma(pagos, "bruto");
+  $("sCant").textContent = pagos.length;
+  $("sNeto").textContent = fmt(neto);
+  $("sBruto").textContent = fmt(bruto);
+  $("sCom").textContent = fmt(Math.round((bruto - neto) * 100) / 100);
+  $("tNeto").textContent = fmt(neto);
+  $("tBruto").textContent = fmt(bruto);
+  $("resultado").classList.toggle("hidden", pagos.length === 0);
+  $("btnExcel").disabled = pagos.length === 0;
+}
+
+// ---------- Excel ----------
+async function descargarExcel(){
+  const pagos = actual; if (!pagos.length) return;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Pagos", { views: [{ state: "frozen", ySplit: 4, showGridLines: false }] });
+  const F = (o = {}) => Object.assign({ name: "Arial", size: 10, color: { argb: "FF2B2B2B" } }, o);
+  const VERDE = "FF006E53", MENTA = "FF4CDFB0", MENTA_SUAVE = "FFE3F8F0";
+  const num = "#,##0.00";
+  const fino = { style: "thin", color: { argb: "FFE5ECE9" } };
+
+  const nombre = $("cliente").value.trim().split(/\s+/)[0] || "";
+  const pedido = $("pedido").value.trim();
+  const mensaje = $("mensaje").value.trim();
+
+  ws.columns = [{ width: 7 }, { width: 44 }, { width: 15 }, { width: 15 }];
+
+  // Fila 1: título
+  ws.mergeCells("A1:D1");
+  ws.getCell("A1").value = "Extracto de pagos" + (pedido ? " · Pedido N° " + pedido : "");
+  ws.getCell("A1").font = F({ bold: true, size: 14, color: { argb: VERDE } });
+  ws.getCell("A1").border = { bottom: { style: "medium", color: { argb: MENTA } } };
+  ws.getRow(1).height = 26;
+  ws.getCell("A1").alignment = { vertical: "middle" };
+
+  // Fila 2: saludo
+  ws.mergeCells("A2:D2");
+  ws.getCell("A2").value = `¡Hola${nombre ? " " + nombre : ""}! ${mensaje}`.trim();
+  ws.getCell("A2").font = F({ size: 11 });
+  ws.getCell("A2").alignment = { wrapText: true, vertical: "middle" };
+  ws.getRow(2).height = 48;
+
+  // Fila 4: encabezado
+  const H = 4, first = H + 1;
+  ws.getRow(H).values = ["N°", "Correo del emisor", "Neto (USD)", "Bruto (USD)"];
+  ws.getRow(H).eachCell(c => {
+    c.font = F({ bold: true, color: { argb: "FFFFFFFF" } });
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: VERDE } };
+    c.alignment = { horizontal: "center", vertical: "middle" };
+  });
+  ws.getRow(H).height = 20;
+
+  pagos.forEach((p, i) => {
+    const r = ws.getRow(first + i);
+    r.values = [i + 1, p.email, p.neto, p.bruto];
+    r.getCell(1).font = F({ color: { argb: "FF6B6B6B" } }); r.getCell(1).alignment = { horizontal: "center" };
+    r.getCell(2).font = F();
+    [3, 4].forEach(k => { r.getCell(k).font = F(); r.getCell(k).numFmt = num; });
+    for (let c = 1; c <= 4; c++) r.getCell(c).border = { bottom: fino };
+  });
+
+  const last = first + pagos.length - 1, tr = last + 1;
+  const neto = suma(pagos, "neto"), bruto = suma(pagos, "bruto");
+  ws.getCell(tr, 2).value = "TOTAL";
+  ws.getCell(tr, 3).value = { formula: `SUM(C${first}:C${last})`, result: neto };
+  ws.getCell(tr, 4).value = { formula: `SUM(D${first}:D${last})`, result: bruto };
+  for (let c = 1; c <= 4; c++){
+    const cell = ws.getCell(tr, c);
+    cell.font = F({ bold: true, color: { argb: VERDE } });
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: MENTA_SUAVE } };
+    cell.border = { top: { style: "medium", color: { argb: VERDE } } };
+    if (c > 2) cell.numFmt = num;
+  }
+
+  const res = [
+    ["Cantidad de pagos", { formula: `COUNTA(B${first}:B${last})`, result: pagos.length }, null],
+    ["Comisiones (bruto − neto)", { formula: `D${tr}-C${tr}`, result: Math.round((bruto - neto) * 100) / 100 }, num],
+  ];
+  if (pedido) res.push(["Número de pedido", pedido, null]);
+  res.forEach(([k, v, f], i) => {
+    const r = tr + 2 + i;
+    ws.getCell(r, 2).value = k; ws.getCell(r, 2).font = F({ bold: true, color: { argb: VERDE } });
+    ws.getCell(r, 3).value = v; ws.getCell(r, 3).font = F();
+    ws.getCell(r, 3).alignment = { horizontal: "right" };
+    if (f) ws.getCell(r, 3).numFmt = f;
+  });
+
+  ws.pageSetup = { fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: `${H}:${H}` };
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const hoy = new Date();
+  const fecha = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
+  const limpio = s => s.trim().replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_|_$/g, "");
+  const cli = limpio($("cliente").value), ped = limpio(pedido);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `extracto_pagos${ped ? "_pedido_" + ped : ""}${cli ? "_" + cli : ""}_${fecha}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+$("texto").addEventListener("input", procesar);
+$("btnExcel").addEventListener("click", descargarExcel);
+$("btnLimpiar").addEventListener("click", () => { $("texto").value = ""; procesar(); $("texto").focus(); });
+</script>
+</body>
+</html>
